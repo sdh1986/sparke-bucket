@@ -1,0 +1,32 @@
+{
+  "update_schedule": {
+    "description": "自动更新检查的时间安排",
+    "cron_expressions": [
+      "0 1 * * *",
+      "0 13 * * *"
+    ],
+    "timezone": "UTC"
+  },
+  "notification": {
+    "description": "通知设置",
+    "enable_summary": true,
+    "enable_commit_messages": true
+  },
+  "validation": {
+    "description": "验证设置",
+    "check_required_fields": true,
+    "validate_json_format": true,
+    "test_install": true
+  },
+  "apps": {
+    "description": "应用配置",
+    "exclude_patterns": [],
+    "include_patterns": ["*.json"]
+  },
+  "git": {
+    "description": "Git 配置",
+    "commit_author": "github-actions[bot]",
+    "commit_email": "github-actions[bot]@users.noreply.github.com",
+    "commit_message_template": "Auto-update: {date}\nUpdated: {updated_apps}\nFailed: {failed_apps}"
+  }
+}

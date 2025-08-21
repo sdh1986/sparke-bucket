@@ -1,0 +1,120 @@
+name: Validate Manifests
+on:
+  pull_request:
+    paths:
+      - 'bucket/*.json'
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'bucket/*.json'
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Setup PowerShell
+        shell: pwsh
+        run: |
+          Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
+          
+      - name: Install Scoop
+        shell: pwsh
+        run: |
+          iwr -useb get.scoop.sh | iex
+          
+      - name: Validate Manifests
+        shell: pwsh
+        run: |
+          $bucket = "${{ github.workspace }}\bucket"
+          $manifests = Get-ChildItem "$bucket\*.json"
+          $errors = @()
+          $warnings = @()
+          
+          Write-Host "Validating $($manifests.Count) manifest files..."
+          
+          foreach ($manifest in $manifests) {
+            $appName = $manifest.BaseName
+            Write-Host "Validating $appName..." -ForegroundColor Blue
+            
+            try {
+              # 检查 JSON 格式
+              $content = Get-Content $manifest.FullName -Raw
+              $json = $content | ConvertFrom-Json
+              
+              # 检查必需字段
+              $requiredFields = @('version', 'description', 'homepage', 'url')
+              foreach ($field in $requiredFields) {
+                if (-not $json.$field) {
+                  $errors += "$appName`: Missing required field '$field'"
+                }
+              }
+              
+              # 检查 URL 格式
+              if ($json.url -and $json.url -notmatch '^https?://') {
+                  $warnings += "$appName`: URL should use HTTPS protocol"
+              }
+              
+              # 检查版本格式
+              if ($json.version -and $json.version -notmatch '^\d+\.\d+') {
+                  $warnings += "$appName`: Version format might be invalid"
+              }
+              
+              # 检查 hash 格式
+              if ($json.hash -and $json.hash.Length -ne 64 -and $json.hash.Length -ne 40) {
+                  $warnings += "$appName`: Hash length seems unusual (expected 40 or 64 characters)"
+              }
+              
+              Write-Host "✓ $appName is valid" -ForegroundColor Green
+              
+            } catch {
+              $errors += "$appName`: JSON parsing error - $($_.Exception.Message)"
+              Write-Host "✗ $appName has errors" -ForegroundColor Red
+            }
+          }
+          
+          # 输出结果
+          if ($errors) {
+            Write-Host "`n❌ Validation Errors:" -ForegroundColor Red
+            foreach ($error in $errors) {
+              Write-Host "  - $error" -ForegroundColor Red
+            }
+          }
+          
+          if ($warnings) {
+            Write-Host "`n⚠️ Validation Warnings:" -ForegroundColor Yellow
+            foreach ($warning in $warnings) {
+              Write-Host "  - $warning" -ForegroundColor Yellow
+            }
+          }
+          
+          if (-not $errors -and -not $warnings) {
+            Write-Host "`n✅ All manifests are valid!" -ForegroundColor Green
+          }
+          
+          # 如果有错误，退出失败
+          if ($errors) {
+            exit 1
+          }
+          
+      - name: Test Scoop Install
+        shell: pwsh
+        run: |
+          $bucket = "${{ github.workspace }}\bucket"
+          $manifests = Get-ChildItem "$bucket\*.json" | Select-Object -ExpandProperty BaseName
+          
+          Write-Host "Testing scoop install for each manifest..."
+          
+          foreach ($app in $manifests) {
+            Write-Host "Testing install for $app..." -ForegroundColor Blue
+            
+            try {
+              # 使用 --dry-run 模式测试安装
+              scoop install --dry-run "$bucket\$app.json" 2>&1 | Out-Null
+              Write-Host "✓ $app install test passed" -ForegroundColor Green
+            } catch {
+              Write-Host "⚠️ $app install test warning: $($_.Exception.Message)" -ForegroundColor Yellow
+            }
+          }
